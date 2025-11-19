@@ -3,6 +3,15 @@ const cors = require('cors');
 const path = require('path');
 const fetch = require('node-fetch');
 const AbortController = require('abort-controller');
+const https = require('https');
+
+// Keep-Alive 에이전트로 연결 재사용
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30000,
+  maxSockets: 50,
+  timeout: 60000
+});
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -71,18 +80,50 @@ app.get('/api/weather/:city', async (req, res) => {
     // Open-Meteo API 호출 (API 키 불필요)
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&timezone=auto`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 30000);
+    let response;
+    let data;
+    let lastError;
 
-    const response = await fetch(url, {
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
+    // 최대 3번 재시도
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`API 호출 시도 ${attempt}/3...`);
 
-    console.log('response status:', response.status);
-    const data = await response.json();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, 60000); // 60초 타임아웃
+
+        response = await fetch(url, {
+          signal: controller.signal,
+          agent: httpsAgent,
+          headers: {
+            'User-Agent': 'weather-app/1.0'
+          }
+        });
+        clearTimeout(timeoutId);
+
+        console.log('response status:', response.status);
+        data = await response.json();
+
+        if (response.ok) {
+          break; // 성공하면 루프 종료
+        }
+      } catch (error) {
+        lastError = error;
+        console.error(`시도 ${attempt} 실패:`, error.message);
+
+        if (attempt < 3) {
+          // 재시도 전 1초 대기
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    }
+
+    if (!response || !response.ok) {
+      throw lastError || new Error('API 호출 실패');
+    }
+
     console.log('data: ', data);
 
     if (response.ok) {
@@ -203,17 +244,46 @@ app.get('/api/forecast/:city', async (req, res) => {
     // Open-Meteo API 호출 (7일 예보)
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&timezone=auto&forecast_days=7`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 30000);
+    let response;
+    let data;
+    let lastError;
 
-    const response = await fetch(url, {
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
+    // 최대 3번 재시도
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`예보 API 호출 시도 ${attempt}/3...`);
 
-    const data = await response.json();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, 60000);
+
+        response = await fetch(url, {
+          signal: controller.signal,
+          agent: httpsAgent,
+          headers: {
+            'User-Agent': 'weather-app/1.0'
+          }
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          data = await response.json();
+          break;
+        }
+      } catch (error) {
+        lastError = error;
+        console.error(`예보 시도 ${attempt} 실패:`, error.message);
+
+        if (attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    }
+
+    if (!response || !response.ok) {
+      throw lastError || new Error('예보 API 호출 실패');
+    }
 
     if (response.ok) {
       // OpenWeatherMap 형식으로 변환

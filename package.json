@@ -14,7 +14,6 @@
   "license": "ISC",
   "description": "Weather App with React and Node.js",
   "dependencies": {
-    "axios": "^1.6.2",
     "cors": "^2.8.5",
     "express": "^5.1.0"
   },

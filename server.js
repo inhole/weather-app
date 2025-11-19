@@ -1,14 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const axios = require('axios');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+
+const execPromise = promisify(exec);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// axios 기본 설정
-axios.defaults.timeout = 60000; // 60초 타임아웃
-axios.defaults.headers.common['User-Agent'] = 'weather-app/1.0';
 
 // Middleware
 app.use(cors());
@@ -71,16 +71,18 @@ app.get('/api/weather/:city', async (req, res) => {
       return res.status(404).json({ error: '지원하지 않는 도시입니다. (seoul, busan, tokyo, london 등 사용 가능)' });
     }
 
-    // Open-Meteo API 호출 (API 키 불필요) - HTTP 사용
+    // Open-Meteo API 호출 (API 키 불필요) - HTTP 사용, curl로 우회
     const url = `http://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&timezone=auto`;
 
-    console.log('API 호출 중...');
-    const response = await axios.get(url);
-    console.log('response status:', response.status);
-    const data = response.data;
+    console.log('API 호출 중 (curl 사용)...');
+
+    // curl을 사용하여 데이터 가져오기
+    const { stdout } = await execPromise(`curl -s -m 10 "${url}"`);
+    const data = JSON.parse(stdout);
+
     console.log('data: ', data);
 
-    if (response.status === 200 && data.current) {
+    if (data && data.current) {
       // OpenWeatherMap 형식으로 변환
       const weatherData = {
         cod: 200,
@@ -226,14 +228,16 @@ app.get('/api/forecast/:city', async (req, res) => {
       return res.status(404).json({ error: '지원하지 않는 도시입니다.' });
     }
 
-    // Open-Meteo API 호출 (7일 예보) - HTTP 사용
+    // Open-Meteo API 호출 (7일 예보) - HTTP 사용, curl로 우회
     const url = `http://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&timezone=auto&forecast_days=7`;
 
-    console.log('예보 API 호출 중...');
-    const response = await axios.get(url);
-    const data = response.data;
+    console.log('예보 API 호출 중 (curl 사용)...');
 
-    if (response.status === 200 && data.daily) {
+    // curl을 사용하여 데이터 가져오기
+    const { stdout } = await execPromise(`curl -s -m 10 "${url}"`);
+    const data = JSON.parse(stdout);
+
+    if (data && data.daily) {
       // OpenWeatherMap 형식으로 변환
       const forecastData = {
         cod: '200',
@@ -268,8 +272,10 @@ app.get('/api/forecast/:city', async (req, res) => {
       res.status(500).json({ error: '예보 데이터를 가져올 수 없습니다.' });
     }
   } catch (error) {
-    console.error('Error:', error.message);
-    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+    console.error('=== Forecast API Error ===');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.', detail: error.message });
   }
 });
 

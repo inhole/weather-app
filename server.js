@@ -259,14 +259,13 @@ app.get('/api/forecast/:city', async (req, res) => {
   }
 });
 
-// 프로덕션 환경에서 React 앱 제공
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'client/build')));
+// React 빌드 파일 제공
+app.use(express.static(path.join(__dirname, 'client/build')));
 
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'client/build/index.html'));
-  });
-}
+// 모든 라우트를 React 앱으로 전달 (API 라우트 제외)
+app.get('/*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client/build/index.html'));
+});
 
 app.listen(PORT, () => {
   console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);

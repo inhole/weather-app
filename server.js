@@ -70,7 +70,9 @@ app.get('/api/weather/:city', async (req, res) => {
     // Open-Meteo API 호출 (API 키 불필요)
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&timezone=auto`;
 
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      timeout: 30000 // 30초 타임아웃
+    });
     console.log('response status:', response.status);
     const data = await response.json();
     console.log('data: ', data);
@@ -216,7 +218,9 @@ app.get('/api/forecast/:city', async (req, res) => {
     // Open-Meteo API 호출 (7일 예보)
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&timezone=auto&forecast_days=7`;
 
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      timeout: 30000 // 30초 타임아웃
+    });
     const data = await response.json();
 
     if (response.ok) {

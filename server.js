@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fetch = require('node-fetch');
+const AbortController = require('abort-controller');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -70,48 +71,32 @@ app.get('/api/weather/:city', async (req, res) => {
     // Open-Meteo API 호출 (API 키 불필요)
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&timezone=auto`;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 30000);
+
     const response = await fetch(url, {
-      timeout: 30000 // 30초 타임아웃
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
+
     console.log('response status:', response.status);
     const data = await response.json();
     console.log('data: ', data);
 
     if (response.ok) {
-      // OpenWeatherMap 형식으로 변환
-      const weatherData = {
-        cod: 200,
-        name: coords.name,
-        coord: { lat: coords.lat, lon: coords.lon },
-        sys: {
-          country: getCountryCode(city)
-        },
-        main: {
-          temp: data.current.temperature_2m,
-          feels_like: data.current.apparent_temperature,
-          humidity: data.current.relative_humidity_2m,
-          pressure: 1013, // Open-Meteo는 기압 정보가 없으므로 표준 기압값
-        },
-        weather: [{
-          id: data.current.weather_code,
-          main: getWeatherDescription(data.current.weather_code),
-          description: getWeatherDescription(data.current.weather_code),
-          icon: getWeatherIcon(data.current.weather_code),
-        }],
-        wind: {
-          speed: data.current.wind_speed_10m,
-          deg: data.current.wind_direction_10m,
-        },
-      };
-
-      setCachedData(cacheKey, weatherData);
-      res.json(weatherData);
+      // ...existing code...
     } else {
       res.status(500).json({ error: '날씨 데이터를 가져올 수 없습니다.' });
     }
   } catch (error) {
     console.error('Error:', error);
-    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+    if (error.name === 'AbortError') {
+      res.status(504).json({ error: '날씨 API 요청 시간이 초과되었습니다.' });
+    } else {
+      res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+    }
   }
 });
 
@@ -218,9 +203,16 @@ app.get('/api/forecast/:city', async (req, res) => {
     // Open-Meteo API 호출 (7일 예보)
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&timezone=auto&forecast_days=7`;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 30000);
+
     const response = await fetch(url, {
-      timeout: 30000 // 30초 타임아웃
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
+
     const data = await response.json();
 
     if (response.ok) {
@@ -259,7 +251,11 @@ app.get('/api/forecast/:city', async (req, res) => {
     }
   } catch (error) {
     console.error('Error:', error);
-    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+    if (error.name === 'AbortError') {
+      res.status(504).json({ error: '날씨 API 요청 시간이 초과되었습니다.' });
+    } else {
+      res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+    }
   }
 });
 
